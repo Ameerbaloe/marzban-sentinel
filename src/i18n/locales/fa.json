@@ -1,0 +1,27 @@
+{
+  "welcome": "خوش آمدید 👋",
+  "welcome_description": "به Marzban Sentinel خوش آمدید.",
+  "select_language": "لطفاً زبان خود را انتخاب کنید:",
+  "language_changed": "زبان با موفقیت تغییر کرد.",
+  "persian": "🇮🇷 فارسی",
+  "english": "🇬🇧 English",
+
+  "menu_servers": "🖥 سرورها",
+  "menu_users": "👥 کاربران",
+  "menu_backup": "💾 بکاپ",
+  "menu_reports": "📊 گزارش‌ها",
+  "menu_settings": "⚙️ تنظیمات",
+
+  "access_denied": "⛔ شما اجازه استفاده از این ربات را ندارید.",
+  "unknown_command": "دستور شناخته نشد.",
+  "error_generic": "❌ خطایی رخ داد. لطفاً دوباره تلاش کنید.",
+
+  "marzban_connected": "🟢 اتصال به مرزبان برقرار است.",
+  "marzban_connection_failed": "🔴 اتصال به مرزبان برقرار نشد.",
+
+  "server_status": "وضعیت سرور",
+  "users_count": "تعداد کاربران",
+
+  "settings": "⚙️ تنظیمات",
+  "language": "🌐 زبان"
+}

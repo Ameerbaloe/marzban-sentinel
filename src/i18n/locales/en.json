@@ -1,0 +1,27 @@
+{
+  "welcome": "Welcome 👋",
+  "welcome_description": "Welcome to Marzban Sentinel.",
+  "select_language": "Please select your language:",
+  "language_changed": "Language changed successfully.",
+  "persian": "🇮🇷 فارسی",
+  "english": "🇬🇧 English",
+
+  "menu_servers": "🖥 Servers",
+  "menu_users": "👥 Users",
+  "menu_backup": "💾 Backup",
+  "menu_reports": "📊 Reports",
+  "menu_settings": "⚙️ Settings",
+
+  "access_denied": "⛔ You are not authorized to use this bot.",
+  "unknown_command": "Unknown command.",
+  "error_generic": "❌ Something went wrong. Please try again.",
+
+  "marzban_connected": "🟢 Connected to Marzban.",
+  "marzban_connection_failed": "🔴 Could not connect to Marzban.",
+
+  "server_status": "Server Status",
+  "users_count": "Users",
+
+  "settings": "⚙️ Settings",
+  "language": "🌐 Language"
+}
