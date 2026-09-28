@@ -1,9 +1,15 @@
 /** marzban-sentinel  **/
 import { Bot, InlineKeyboard } from "grammy";
-
 import { env } from "../config/env.js";
 import { MarzbanClient } from "../marzban/client.js";
-import { isAuthorized } from "../security/auth.js";
+import {
+  getUserRole,
+  hasPermission,
+  isAuthorized,
+  setUserRole,
+} from "../security/auth.js";
+import {getAdmins , removeUser,} from "../database/db.js";
+
 
 import { languageMenu, mainMenu } from "./menu.js";
 import { Language, t } from "./i18n.js";
@@ -11,6 +17,9 @@ import { Language, t } from "./i18n.js";
 const userLanguages = new Map<number, Language>();
 
 const marzban = new MarzbanClient();
+
+
+const pendingAdminAdd = new Set<number>();
 
 export const bot = new Bot(env.telegram.botToken);
 
@@ -474,6 +483,15 @@ bot.callbackQuery("settings", async (ctx) => {
         : "👤 User Role",
       "settings_role",
     )
+
+.row()
+.text(
+  lang === "fa"
+    ? "🔐 مدیریت دسترسی‌ها"
+    : "🔐 Access Management",
+  "settings_access",
+)
+
     .row()
     .text(
       lang === "fa"
@@ -506,6 +524,592 @@ bot.callbackQuery("settings", async (ctx) => {
   );
 });
 
+
+/**
+ * Access management
+ */
+bot.callbackQuery("settings_access", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const lang = userLanguages.get(telegramId) ?? "fa";
+
+  const role = getUserRole(telegramId);
+
+  if (!hasPermission(role, "owner")) {
+    await ctx.answerCallbackQuery({
+      text:
+        lang === "fa"
+          ? "⛔ فقط Owner به این بخش دسترسی دارد."
+          : "⛔ Only the Owner can access this section.",
+      show_alert: true,
+    });
+
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
+
+  await ctx.editMessageText(
+    lang === "fa"
+      ? "🔐 مدیریت دسترسی‌ها"
+      : "🔐 Access Management",
+    {
+      reply_markup: new InlineKeyboard()
+        .text(
+          lang === "fa"
+            ? "➕ افزودن Admin"
+            : "➕ Add Admin",
+          "admin_add",
+        )
+        .row()
+        .text(
+          lang === "fa"
+            ? "👥 لیست Adminها"
+            : "👥 Admin List",
+          "admin_list",
+        )
+        .row()
+        .text(
+          lang === "fa"
+            ? "🔙 بازگشت"
+            : "🔙 Back",
+          "settings",
+        ),
+    },
+  );
+});
+
+
+/**
+ * Start adding an Admin
+ */
+bot.callbackQuery("admin_add", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const lang = userLanguages.get(telegramId) ?? "fa";
+
+  const role = getUserRole(telegramId);
+
+  if (!hasPermission(role, "owner")) {
+    await ctx.answerCallbackQuery({
+      text:
+        lang === "fa"
+          ? "⛔ فقط Owner می‌تواند Admin اضافه کند."
+          : "⛔ Only the Owner can add Admins.",
+      show_alert: true,
+    });
+
+    return;
+  }
+
+  pendingAdminAdd.add(telegramId);
+
+  await ctx.answerCallbackQuery();
+
+  await ctx.editMessageText(
+    lang === "fa"
+      ? "➕ افزودن Admin\n\nلطفاً Telegram ID کاربر را ارسال کنید.\n\nمثال:\n123456789"
+      : "➕ Add Admin\n\nPlease send the user's Telegram ID.\n\nExample:\n123456789",
+    {
+      reply_markup: new InlineKeyboard().text(
+        lang === "fa"
+          ? "❌ لغو"
+          : "❌ Cancel",
+        "settings_access",
+      ),
+    },
+  );
+});
+
+
+/**
+ * Show Admin list
+ */
+bot.callbackQuery("admin_list", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const lang = userLanguages.get(telegramId) ?? "fa";
+
+  const role = getUserRole(telegramId);
+
+  if (!hasPermission(role, "owner")) {
+    await ctx.answerCallbackQuery({
+      text:
+        lang === "fa"
+          ? "⛔ فقط Owner می‌تواند لیست Adminها را ببیند."
+          : "⛔ Only the Owner can view the Admin list.",
+      show_alert: true,
+    });
+
+    return;
+  }
+
+  await ctx.answerCallbackQuery();
+
+  const admins = getAdmins();
+
+  if (admins.length === 0) {
+    await ctx.editMessageText(
+      lang === "fa"
+        ? "👥 لیست Adminها\n\nهیچ Adminی ثبت نشده است."
+        : "👥 Admin List\n\nNo Admins have been registered yet.",
+      {
+        reply_markup: new InlineKeyboard()
+          .text(
+            lang === "fa"
+              ? "🔙 بازگشت"
+              : "🔙 Back",
+            "settings_access",
+          ),
+      },
+    );
+
+    return;
+  }
+
+  const keyboard = new InlineKeyboard();
+
+  for (const admin of admins) {
+    keyboard
+      .text(
+        `🆔 ${admin.telegramId}`,
+        `admin_info_${admin.telegramId}`,
+      )
+      .text(
+        "❌",
+        `admin_remove_${admin.telegramId}`,
+      )
+      .row();
+  }
+
+  keyboard.text(
+    lang === "fa"
+      ? "🔙 بازگشت"
+      : "🔙 Back",
+    "settings_access",
+  );
+
+  const adminList = admins
+    .map(
+      (admin, index) =>
+        `${index + 1}. 🆔 ${admin.telegramId}`,
+    )
+    .join("\n");
+
+  await ctx.editMessageText(
+    lang === "fa"
+      ? `👥 لیست Adminها\n\n${adminList}\n\nبرای حذف، روی ❌ کنار Admin موردنظر بزنید.`
+      : `👥 Admin List\n\n${adminList}\n\nPress ❌ next to an Admin to remove them.`,
+    {
+      reply_markup: keyboard,
+    },
+  );
+});
+
+/**
+ * Ask for Admin removal confirmation
+ */
+bot.callbackQuery(
+  /^admin_remove_(\d+)$/,
+  async (ctx) => {
+    const telegramId = ctx.from.id;
+    const lang =
+      userLanguages.get(telegramId) ?? "fa";
+
+    const role = getUserRole(telegramId);
+
+    if (!hasPermission(role, "owner")) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "⛔ فقط Owner می‌تواند Admin حذف کند."
+            : "⛔ Only the Owner can remove Admins.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const match =
+      ctx.callbackQuery.data.match(
+        /^admin_remove_(\d+)$/,
+      );
+
+    if (!match) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ شناسه نامعتبر است."
+            : "❌ Invalid ID.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const targetId = Number(match[1]);
+
+    if (
+      !Number.isSafeInteger(targetId) ||
+      targetId <= 0
+    ) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ شناسه نامعتبر است."
+            : "❌ Invalid ID.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    if (targetId === env.owner.telegramId) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "⛔ Owner قابل حذف نیست."
+            : "⛔ The Owner cannot be removed.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const targetRole =
+      getUserRole(targetId);
+
+    if (targetRole !== "admin") {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ این کاربر Admin نیست یا قبلاً حذف شده است."
+            : "❌ This user is not an Admin or has already been removed.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    await ctx.answerCallbackQuery();
+
+    await ctx.editMessageText(
+      lang === "fa"
+        ? [
+            "⚠️ تأیید حذف Admin",
+            "",
+            `🆔 Telegram ID: ${targetId}`,
+            "",
+            "آیا مطمئن هستید که می‌خواهید دسترسی Admin این کاربر را حذف کنید؟",
+          ].join("\n")
+        : [
+            "⚠️ Confirm Admin Removal",
+            "",
+            `🆔 Telegram ID: ${targetId}`,
+            "",
+            "Are you sure you want to remove this user's Admin access?",
+          ].join("\n"),
+      {
+        reply_markup:
+          new InlineKeyboard()
+            .text(
+              lang === "fa"
+                ? "✅ بله، حذف شود"
+                : "✅ Yes, Remove",
+              `admin_confirm_remove_${targetId}`,
+            )
+            .row()
+            .text(
+              lang === "fa"
+                ? "❌ لغو"
+                : "❌ Cancel",
+              "admin_list",
+            ),
+      },
+    );
+  },
+);
+
+/**
+ * Confirm Admin removal
+ */
+bot.callbackQuery(
+  /^admin_confirm_remove_(\d+)$/,
+  async (ctx) => {
+    const telegramId = ctx.from.id;
+    const lang =
+      userLanguages.get(telegramId) ?? "fa";
+
+    const role = getUserRole(telegramId);
+
+    if (!hasPermission(role, "owner")) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "⛔ فقط Owner می‌تواند Admin حذف کند."
+            : "⛔ Only the Owner can remove Admins.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const match =
+      ctx.callbackQuery.data.match(
+        /^admin_confirm_remove_(\d+)$/,
+      );
+
+    if (!match) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ شناسه نامعتبر است."
+            : "❌ Invalid ID.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const targetId = Number(match[1]);
+
+    if (
+      !Number.isSafeInteger(targetId) ||
+      targetId <= 0
+    ) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ شناسه نامعتبر است."
+            : "❌ Invalid ID.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    if (targetId === env.owner.telegramId) {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "⛔ Owner قابل حذف نیست."
+            : "⛔ The Owner cannot be removed.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    const targetRole =
+      getUserRole(targetId);
+
+    if (targetRole !== "admin") {
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ این کاربر دیگر Admin نیست."
+            : "❌ This user is no longer an Admin.",
+        show_alert: true,
+      });
+
+      return;
+    }
+
+    try {
+      removeUser(targetId);
+
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "✅ دسترسی Admin حذف شد."
+            : "✅ Admin access removed.",
+      });
+
+      const admins = getAdmins();
+
+      if (admins.length === 0) {
+        await ctx.editMessageText(
+          lang === "fa"
+            ? "👥 لیست Adminها\n\nهیچ Adminی باقی نمانده است."
+            : "👥 Admin List\n\nNo Admins remain.",
+          {
+            reply_markup:
+              new InlineKeyboard().text(
+                lang === "fa"
+                  ? "🔙 بازگشت"
+                  : "🔙 Back",
+                "settings_access",
+              ),
+          },
+        );
+
+        return;
+      }
+
+      const keyboard =
+        new InlineKeyboard();
+
+      for (const admin of admins) {
+        keyboard
+          .text(
+            `🆔 ${admin.telegramId}`,
+            `admin_info_${admin.telegramId}`,
+          )
+          .text(
+            "❌",
+            `admin_remove_${admin.telegramId}`,
+          )
+          .row();
+      }
+
+      keyboard.text(
+        lang === "fa"
+          ? "🔙 بازگشت"
+          : "🔙 Back",
+        "settings_access",
+      );
+
+      const adminList = admins
+        .map(
+          (admin, index) =>
+            `${index + 1}. 🆔 ${admin.telegramId}`,
+        )
+        .join("\n");
+
+      await ctx.editMessageText(
+        lang === "fa"
+          ? `👥 لیست Adminها\n\n${adminList}`
+          : `👥 Admin List\n\n${adminList}`,
+        {
+          reply_markup: keyboard,
+        },
+      );
+    } catch (error) {
+      console.error(
+        "Failed to remove Admin:",
+        error,
+      );
+
+      await ctx.answerCallbackQuery({
+        text:
+          lang === "fa"
+            ? "❌ حذف Admin با خطا مواجه شد."
+            : "❌ Failed to remove Admin.",
+        show_alert: true,
+      });
+    }
+  },
+);
+
+/**
+ * Handle Telegram ID submitted for Admin creation
+ */
+bot.on("message:text", async (ctx) => {
+  const telegramId = ctx.from.id;
+
+  if (!pendingAdminAdd.has(telegramId)) {
+    return;
+  }
+
+  const lang = userLanguages.get(telegramId) ?? "fa";
+
+  const role = getUserRole(telegramId);
+
+  if (!hasPermission(role, "owner")) {
+    pendingAdminAdd.delete(telegramId);
+
+    await ctx.reply(
+      lang === "fa"
+        ? "⛔ فقط Owner می‌تواند Admin اضافه کند."
+        : "⛔ Only the Owner can add Admins.",
+    );
+
+    return;
+  }
+
+  const targetId = Number(
+    ctx.message.text.trim(),
+  );
+
+  if (
+    !Number.isSafeInteger(targetId) ||
+    targetId <= 0
+  ) {
+    await ctx.reply(
+      lang === "fa"
+        ? "❌ Telegram ID نامعتبر است.\nلطفاً فقط یک عدد معتبر ارسال کنید."
+        : "❌ Invalid Telegram ID.\nPlease send a valid numeric Telegram ID.",
+    );
+
+    return;
+  }
+
+  if (targetId === telegramId) {
+    await ctx.reply(
+      lang === "fa"
+        ? "❌ Owner نمی‌تواند خودش را Admin کند."
+        : "❌ The Owner cannot add themselves as Admin.",
+    );
+
+    return;
+  }
+
+  try {
+    setUserRole(
+      targetId,
+      "admin",
+    );
+
+    pendingAdminAdd.delete(
+      telegramId,
+    );
+
+    await ctx.reply(
+      lang === "fa"
+        ? [
+            "✅ Admin با موفقیت اضافه شد.",
+            "",
+            `🆔 Telegram ID: ${targetId}`,
+            "🛠️ نقش: Admin",
+          ].join("\n")
+        : [
+            "✅ Admin added successfully.",
+            "",
+            `🆔 Telegram ID: ${targetId}`,
+            "🛠️ Role: Admin",
+          ].join("\n"),
+      {
+        reply_markup:
+          new InlineKeyboard()
+            .text(
+              lang === "fa"
+                ? "🔐 مدیریت دسترسی‌ها"
+                : "🔐 Access Management",
+              "settings_access",
+            )
+            .row()
+            .text(
+              lang === "fa"
+                ? "🏠 منوی اصلی"
+                : "🏠 Main Menu",
+              "back_to_menu",
+            ),
+      },
+    );
+  } catch (error) {
+    console.error(
+      "Failed to add Admin:",
+      error,
+    );
+
+    pendingAdminAdd.delete(
+      telegramId,
+    );
+
+    await ctx.reply(
+      lang === "fa"
+        ? "❌ افزودن Admin با خطا مواجه شد."
+        : "❌ Failed to add Admin.",
+    );
+  }
+});
 
 /**
  * Language settings
@@ -597,6 +1201,109 @@ bot.callbackQuery("settings_set_lang_en", async (ctx) => {
     },
   );
 });
+
+
+
+/**
+ * User role settings
+ */
+bot.callbackQuery("settings_role", async (ctx) => {
+  const telegramId = ctx.from.id;
+  const lang = userLanguages.get(telegramId) ?? "fa";
+
+  await ctx.answerCallbackQuery();
+
+  const role = getUserRole(telegramId);
+
+  if (!role) {
+    await ctx.editMessageText(
+      lang === "fa"
+        ? "⛔ نقش کاربری شما مشخص نیست."
+        : "⛔ Your user role could not be determined.",
+      {
+        reply_markup: new InlineKeyboard().text(
+          lang === "fa"
+            ? "🔙 بازگشت"
+            : "🔙 Back",
+          "settings",
+        ),
+      },
+    );
+
+    return;
+  }
+
+  const roleInfo = {
+    owner: {
+      fa: [
+        "👑 Owner",
+        "دسترسی کامل به تمام امکانات ربات",
+      ],
+      en: [
+        "👑 Owner",
+        "Full access to all bot features",
+      ],
+    },
+
+    admin: {
+      fa: [
+        "🛠️ Admin",
+        "دسترسی مدیریتی به امکانات مجاز",
+      ],
+      en: [
+        "🛠️ Admin",
+        "Administrative access to permitted features",
+      ],
+    },
+
+    viewer: {
+      fa: [
+        "👁️ Viewer",
+        "فقط دسترسی مشاهده",
+      ],
+      en: [
+        "👁️ Viewer",
+        "Read-only access",
+      ],
+    },
+  } as const;
+
+  const info =
+    lang === "fa"
+      ? roleInfo[role].fa
+      : roleInfo[role].en;
+
+  const title =
+    lang === "fa"
+      ? "👤 نقش کاربر"
+      : "👤 User Role";
+
+  const currentRole =
+    lang === "fa"
+      ? "نقش فعلی:"
+      : "Current role:";
+
+  await ctx.editMessageText(
+    [
+      title,
+      "",
+      `${currentRole} ${info[0]}`,
+      "",
+      info[0],
+      info[1],
+    ].join("\n"),
+    {
+      reply_markup: new InlineKeyboard().text(
+        lang === "fa"
+          ? "🔙 بازگشت"
+          : "🔙 Back",
+        "settings",
+      ),
+    },
+  );
+});``
+
+
 
 /**
  * Error handler
