@@ -50,6 +50,24 @@ const deleteUser = db.prepare(`
   WHERE telegram_id = ?
 `);
 
+const listAdmins = db.prepare(`
+  SELECT
+    telegram_id AS telegramId,
+    role
+  FROM users
+  WHERE role = 'admin'
+  ORDER BY created_at ASC
+`);
+
+const listManagedUsers = db.prepare(`
+  SELECT
+    telegram_id AS telegramId,
+    role
+  FROM users
+  WHERE role IN ('admin', 'viewer')
+  ORDER BY created_at ASC
+`);
+
 export type DatabaseRole =
   | "owner"
   | "admin"
@@ -81,19 +99,16 @@ export function getStoredUserRole(
   return user?.role ?? null;
 }
 
-const listAdmins = db.prepare(`
-  SELECT
-    telegram_id AS telegramId,
-    role
-  FROM users
-  WHERE role = 'admin'
-  ORDER BY created_at ASC
-`);
-
 export function getAdmins(): DatabaseUser[] {
   return listAdmins.all() as DatabaseUser[];
 }
 
+/**
+ * Get all Admins and Viewers.
+ */
+export function getManagedUsers(): DatabaseUser[] {
+  return listManagedUsers.all() as DatabaseUser[];
+}
 
 export function removeUser(
   telegramId: number,

@@ -45,7 +45,13 @@ export function getUserRole(
 export function isAuthorized(
   telegramId: number,
 ): boolean {
-  return getUserRole(telegramId) !== null;
+  const role =
+    getUserRole(telegramId);
+
+  return (
+    role === "owner" ||
+    role === "admin"
+  );
 }
 
 /**
